@@ -1,7 +1,14 @@
 [package]
 name = "identity_dbus_broker"
+description = "DBus Broker which supplies credentials for authenticated Entra ID users"
 version = "0.1.0"
 edition = "2021"
+authors = [
+    "David Mulder <dmulder@suse.com>"
+]
+license = "LGPL-3.0-or-later"
+homepage = "https://www.samba.org/"
+repository = "https://github.com/himmelblau-idm/identity_dbus_broker"
 
 [dependencies]
 dbus = "0.9.7"
