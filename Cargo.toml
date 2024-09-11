@@ -1,0 +1,9 @@
+[package]
+name = "identity_dbus_broker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dbus = "0.9.7"
+dbus-crossroads = "0.5.2"
+libc = "0.2.158"
