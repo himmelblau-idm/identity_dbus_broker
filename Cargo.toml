@@ -1,7 +1,7 @@
 [package]
 name = "identity_dbus_broker"
 description = "DBus Broker which supplies credentials for authenticated Entra ID users"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = [
     "David Mulder <dmulder@suse.com>"

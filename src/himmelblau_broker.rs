@@ -34,56 +34,56 @@ pub trait HimmelblauBroker {
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
     async fn acquire_token_silently(
         &mut self,
         protocol_version: String,
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
     async fn get_accounts(
         &mut self,
         protocol_version: String,
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
     async fn remove_account(
         &mut self,
         protocol_version: String,
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
     async fn acquire_prt_sso_cookie(
         &mut self,
         protocol_version: String,
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
     async fn generate_signed_http_request(
         &mut self,
         protocol_version: String,
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
     async fn cancel_interactive_flow(
         &mut self,
         protocol_version: String,
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
     async fn get_linux_broker_version(
         &mut self,
         protocol_version: String,
         correlation_id: String,
         request_json: String,
         uid: uid_t,
-    ) -> Result<String, ()>;
+    ) -> Result<String, Box<dyn Error>>;
 }
 
 #[derive(Default)]
@@ -143,146 +143,114 @@ where
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .acquire_token_interactively(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "acquireTokenInteractively failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .acquire_token_interactively(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
             ClientRequest::acquireTokenSilently(
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .acquire_token_silently(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "acquireTokenSilently failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .acquire_token_silently(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
             ClientRequest::getAccounts(
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .get_accounts(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "getAccounts failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .get_accounts(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
             ClientRequest::removeAccount(
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .remove_account(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "removeAccount failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .remove_account(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
             ClientRequest::acquirePrtSsoCookie(
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .acquire_prt_sso_cookie(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "acquirePrtSsoCookie failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .acquire_prt_sso_cookie(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
             ClientRequest::generateSignedHttpRequest(
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .generate_signed_http_request(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "generateSignedHttpRequest failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .generate_signed_http_request(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
             ClientRequest::cancelInteractiveFlow(
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .cancel_interactive_flow(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "cancelInteractiveFlow failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .cancel_interactive_flow(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
             ClientRequest::getLinuxBrokerVersion(
                 protocol_version,
                 correlation_id,
                 request_json,
-            ) => broker
-                .get_linux_broker_version(
-                    protocol_version,
-                    correlation_id,
-                    request_json,
-                    uid,
-                )
-                .await
-                .map_err(|_| {
-                    Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "acquireTokenInteractively failed",
-                    )) as Box<dyn Error>
-                })?,
+            ) => {
+                broker
+                    .get_linux_broker_version(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await?
+            }
         };
         reqs.send(resp).await?;
         reqs.flush().await?;
