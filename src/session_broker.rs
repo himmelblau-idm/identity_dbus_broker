@@ -15,12 +15,17 @@
    You should have received a copy of the GNU Lesser General Public License
    along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
+use crate::broker_proto::ClientRequest;
 #[allow(unused_imports)]
 use dbus::arg;
-use dbus::blocking;
 use dbus::blocking::Connection;
 use dbus_crossroads as crossroads;
+use std::error::Error;
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
 use std::time::Duration;
+use std::time::SystemTime;
+use tracing::{debug, error};
 
 pub trait SessionBroker {
     fn acquire_token_interactively(
@@ -171,174 +176,80 @@ where
     unreachable!()
 }
 
-trait HimmelblauBroker {
-    fn acquire_token_interactively(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
-    fn acquire_token_silently(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
-    fn get_accounts(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
-    fn remove_account(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
-    fn acquire_prt_sso_cookie(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
-    fn generate_signed_http_request(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
-    fn cancel_interactive_flow(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
-    fn get_linux_broker_version(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error>;
+struct HimmelblauSessionBroker {
+    sock_path: String,
+    timeout: u64,
 }
 
-impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target = T>> HimmelblauBroker
-    for blocking::Proxy<'a, C>
-{
-    fn acquire_token_interactively(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "acquireTokenInteractively",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
-    }
+impl HimmelblauSessionBroker {
+    fn request(&self, message: ClientRequest) -> Result<String, Box<dyn Error>> {
+        let mut stream = UnixStream::connect(&self.sock_path)
+            .map_err(|e| {
+                error!(
+                    "Unix socket stream setup error while connecting to {} -> {:?}",
+                    self.sock_path, e
+                );
+                e
+            })
+            .map_err(Box::new)?;
 
-    fn acquire_token_silently(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "acquireTokenSilently",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
-    }
+        stream
+            .write_all(&serde_json::to_vec(&message)?)
+            .and_then(|_| stream.flush())
+            .map_err(|e| {
+                error!("stream write error -> {:?}", e);
+                e
+            })
+            .map_err(Box::new)?;
 
-    fn get_accounts(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "getAccounts",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
-    }
+        // Now wait on the response.
+        let start = SystemTime::now();
+        let mut read_started = false;
+        let mut data = Vec::with_capacity(1024);
+        let mut counter = 0;
+        let timeout = Duration::from_secs(self.timeout);
 
-    fn remove_account(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "removeAccount",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
-    }
+        loop {
+            let mut buffer = [0; 1024];
+            let durr = SystemTime::now().duration_since(start).map_err(Box::new)?;
+            if durr > timeout {
+                error!("Socket timeout");
+                break;
+            }
+            match stream.read(&mut buffer) {
+                Ok(0) => {
+                    if read_started {
+                        debug!("read_started true, we have completed");
+                        break;
+                    } else {
+                        debug!("Waiting ...");
+                        continue;
+                    }
+                }
+                Ok(count) => {
+                    data.extend_from_slice(&buffer);
+                    counter += count;
+                    if count == 1024 {
+                        debug!("Filled 1024 bytes, looping ...");
+                        read_started = true;
+                        continue;
+                    } else {
+                        debug!("Filled {} bytes, complete", count);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    error!("Stream read failure from {:?} -> {:?}", &stream, e);
+                    return Err(Box::new(e));
+                }
+            }
+        }
 
-    fn acquire_prt_sso_cookie(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "acquirePrtSsoCookie",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
-    }
+        data.truncate(counter);
 
-    fn generate_signed_http_request(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "generateSignedHttpRequest",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
-    }
-
-    fn cancel_interactive_flow(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "cancelInteractiveFlow",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
-    }
-
-    fn get_linux_broker_version(
-        &mut self,
-        protocol_version: String,
-        correlation_id: String,
-        request_json: String,
-    ) -> Result<String, dbus::Error> {
-        self.method_call(
-            "org.samba.himmelblau",
-            "getLinuxBrokerVersion",
-            (protocol_version, correlation_id, request_json),
-        )
-        .map(|r: (String,)| r.0)
+        Ok(String::from_utf8(data)?)
     }
 }
-
-struct HimmelblauSessionBroker;
 
 impl SessionBroker for HimmelblauSessionBroker {
     fn acquire_token_interactively(
@@ -347,13 +258,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.acquire_token_interactively(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::acquireTokenInteractively(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 
     fn acquire_token_silently(
@@ -362,13 +272,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.acquire_token_silently(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::acquireTokenSilently(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 
     fn get_accounts(
@@ -377,13 +286,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.get_accounts(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::getAccounts(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 
     fn remove_account(
@@ -392,13 +300,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.remove_account(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::removeAccount(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 
     fn acquire_prt_sso_cookie(
@@ -407,13 +314,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.acquire_prt_sso_cookie(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::acquirePrtSsoCookie(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 
     fn generate_signed_http_request(
@@ -422,13 +328,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.generate_signed_http_request(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::generateSignedHttpRequest(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 
     fn cancel_interactive_flow(
@@ -437,13 +342,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.cancel_interactive_flow(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::cancelInteractiveFlow(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 
     fn get_linux_broker_version(
@@ -452,13 +356,12 @@ impl SessionBroker for HimmelblauSessionBroker {
         correlation_id: String,
         request_json: String,
     ) -> Result<String, dbus::MethodErr> {
-        let conn = Connection::new_system()?;
-        let mut proxy = conn.with_proxy(
-            "org.samba.himmelblau",
-            "/org/samba/himmelblau",
-            Duration::from_millis(5000),
-        );
-        Ok(proxy.get_linux_broker_version(protocol_version, correlation_id, request_json)?)
+        self.request(ClientRequest::getLinuxBrokerVersion(
+            protocol_version,
+            correlation_id,
+            request_json,
+        ))
+        .map_err(|e| dbus::MethodErr::failed(&e))
     }
 }
 
@@ -474,6 +377,13 @@ impl SessionBroker for HimmelblauSessionBroker {
  * from a binary, then install that binary as a session service on your
  * Linux distribution.
  */
-pub async fn himmelblau_session_broker_serve() -> Result<(), dbus::MethodErr> {
-    session_broker_serve(HimmelblauSessionBroker {}).await
+pub async fn himmelblau_session_broker_serve(
+    sock_path: &str,
+    timeout: u64,
+) -> Result<(), dbus::MethodErr> {
+    session_broker_serve(HimmelblauSessionBroker {
+        sock_path: sock_path.to_string(),
+        timeout,
+    })
+    .await
 }
