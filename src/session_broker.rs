@@ -78,7 +78,9 @@ pub trait SessionBroker {
     ) -> Result<String, dbus::MethodErr>;
 }
 
-fn register_session_broker<T>(cr: &mut crossroads::Crossroads) -> crossroads::IfaceToken<T>
+fn register_session_broker<T>(
+    cr: &mut crossroads::Crossroads,
+) -> crossroads::IfaceToken<T>
 where
     T: SessionBroker + Send + 'static,
 {
@@ -88,8 +90,12 @@ where
             ("protocol_version", "correlation_id", "request_json"),
             ("result",),
             |_, t: &mut T, (protocol_version, correlation_id, request_json)| {
-                t.acquire_token_interactively(protocol_version, correlation_id, request_json)
-                    .map(|x| (x,))
+                t.acquire_token_interactively(
+                    protocol_version,
+                    correlation_id,
+                    request_json,
+                )
+                .map(|x| (x,))
             },
         );
         b.method(
@@ -97,8 +103,12 @@ where
             ("protocol_version", "correlation_id", "request_json"),
             ("result",),
             |_, t: &mut T, (protocol_version, correlation_id, request_json)| {
-                t.acquire_token_silently(protocol_version, correlation_id, request_json)
-                    .map(|x| (x,))
+                t.acquire_token_silently(
+                    protocol_version,
+                    correlation_id,
+                    request_json,
+                )
+                .map(|x| (x,))
             },
         );
         b.method(
@@ -124,8 +134,12 @@ where
             ("protocol_version", "correlation_id", "request_json"),
             ("result",),
             |_, t: &mut T, (protocol_version, correlation_id, request_json)| {
-                t.acquire_prt_sso_cookie(protocol_version, correlation_id, request_json)
-                    .map(|x| (x,))
+                t.acquire_prt_sso_cookie(
+                    protocol_version,
+                    correlation_id,
+                    request_json,
+                )
+                .map(|x| (x,))
             },
         );
         b.method(
@@ -133,8 +147,12 @@ where
             ("protocol_version", "correlation_id", "request_json"),
             ("result",),
             |_, t: &mut T, (protocol_version, correlation_id, request_json)| {
-                t.generate_signed_http_request(protocol_version, correlation_id, request_json)
-                    .map(|x| (x,))
+                t.generate_signed_http_request(
+                    protocol_version,
+                    correlation_id,
+                    request_json,
+                )
+                .map(|x| (x,))
             },
         );
         b.method(
@@ -142,8 +160,12 @@ where
             ("protocol_version", "correlation_id", "request_json"),
             ("result",),
             |_, t: &mut T, (protocol_version, correlation_id, request_json)| {
-                t.cancel_interactive_flow(protocol_version, correlation_id, request_json)
-                    .map(|x| (x,))
+                t.cancel_interactive_flow(
+                    protocol_version,
+                    correlation_id,
+                    request_json,
+                )
+                .map(|x| (x,))
             },
         );
         b.method(
@@ -151,8 +173,12 @@ where
             ("protocol_version", "correlation_id", "request_json"),
             ("result",),
             |_, t: &mut T, (protocol_version, correlation_id, request_json)| {
-                t.get_linux_broker_version(protocol_version, correlation_id, request_json)
-                    .map(|x| (x,))
+                t.get_linux_broker_version(
+                    protocol_version,
+                    correlation_id,
+                    request_json,
+                )
+                .map(|x| (x,))
             },
         );
     })
@@ -182,7 +208,10 @@ struct HimmelblauSessionBroker {
 }
 
 impl HimmelblauSessionBroker {
-    fn request(&self, message: ClientRequest) -> Result<String, Box<dyn Error>> {
+    fn request(
+        &self,
+        message: ClientRequest,
+    ) -> Result<String, Box<dyn Error>> {
         let mut stream = UnixStream::connect(&self.sock_path)
             .map_err(|e| {
                 error!(
@@ -211,7 +240,8 @@ impl HimmelblauSessionBroker {
 
         loop {
             let mut buffer = [0; 1024];
-            let durr = SystemTime::now().duration_since(start).map_err(Box::new)?;
+            let durr =
+                SystemTime::now().duration_since(start).map_err(Box::new)?;
             if durr > timeout {
                 error!("Socket timeout");
                 break;

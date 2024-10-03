@@ -21,8 +21,11 @@ use dbus::blocking::Connection;
 use dbus_crossroads as crossroads;
 
 pub trait DeviceBroker {
-    fn sign(&mut self, session_id: String, request_json: String)
-        -> Result<String, dbus::MethodErr>;
+    fn sign(
+        &mut self,
+        session_id: String,
+        request_json: String,
+    ) -> Result<String, dbus::MethodErr>;
     fn generate_key_pair(
         &mut self,
         session_id: String,
@@ -110,7 +113,9 @@ pub trait DeviceBroker {
     ) -> Result<String, dbus::MethodErr>;
 }
 
-pub fn register_device_broker<T>(cr: &mut crossroads::Crossroads) -> crossroads::IfaceToken<T>
+pub fn register_device_broker<T>(
+    cr: &mut crossroads::Crossroads,
+) -> crossroads::IfaceToken<T>
 where
     T: DeviceBroker + Send + 'static,
 {
@@ -195,8 +200,11 @@ where
             ("session_id", "request_json"),
             ("result",),
             |_, t: &mut T, (session_id, request_json)| {
-                t.asymmetric_key_with_thumbprint_exists(session_id, request_json)
-                    .map(|x| (x,))
+                t.asymmetric_key_with_thumbprint_exists(
+                    session_id,
+                    request_json,
+                )
+                .map(|x| (x,))
             },
         );
         b.method(
