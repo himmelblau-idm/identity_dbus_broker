@@ -23,6 +23,8 @@ use libc::{uid_t, umask};
 use std::error::Error;
 use std::io;
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::broadcast::Receiver;
+use tokio::task::JoinHandle;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 use tracing::{debug, error, trace};
 
@@ -264,7 +266,8 @@ where
 pub async fn himmelblau_broker_serve<T>(
     broker: T,
     sock_path: &str,
-) -> Result<(), Box<dyn Error>>
+    mut broadcast_rx: Receiver<bool>,
+) -> Result<JoinHandle<()>, Box<dyn Error>>
 where
     T: HimmelblauBroker + Send + 'static + Clone,
 {
@@ -277,25 +280,28 @@ where
     // Undo umask changes.
     let _ = unsafe { umask(before) };
 
-    loop {
-        match listener.accept().await {
-            Ok((socket, _addr)) => {
-                let broker_ref = broker.clone();
-                tokio::spawn(async move {
-                    if let Err(e) =
-                        handle_request(socket, broker_ref.clone()).await
-                    {
-                        error!(
-                            "handle_request error occurred; error = {:?}",
-                            e
-                        );
+    Ok(tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = broadcast_rx.recv() => {
+                    break;
+                }
+                accept_res = listener.accept() => {
+                    match accept_res {
+                        Ok((socket, _addr)) => {
+                            let broker_ref = broker.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = handle_request(socket, broker_ref.clone()).await {
+                                    error!("handle_request error occurred; error = {:?}", e);
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            error!("Error while handling connection -> {:?}", e);
+                        }
                     }
-                });
-            }
-            Err(e) => {
-                error!("Error while handling connection -> {:?}", e);
-                return Err(Box::new(e));
+                }
             }
         }
-    }
+    }))
 }
