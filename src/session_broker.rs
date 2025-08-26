@@ -193,9 +193,13 @@ where
     c.request_name("com.microsoft.identity.broker1", false, true, false)?;
 
     let mut cr = crossroads::Crossroads::new();
-    let token = register_session_broker::<T>(&mut cr);
 
-    cr.insert("/com/microsoft/identity/broker1", &[token], broker);
+    let token = register_session_broker::<T>(&mut cr);
+    let peer = cr.register("org.freedesktop.DBus.Peer", |b| {
+        b.method("Ping", (), (),
+            |_, _, (): ()| Ok(()));
+    });
+    cr.insert("/com/microsoft/identity/broker1", &[token, peer], broker);
 
     // Serve clients forever.
     cr.serve(&c)?;
