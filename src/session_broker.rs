@@ -23,6 +23,7 @@ use dbus_crossroads as crossroads;
 use std::error::Error;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use tracing::{debug, error};
@@ -184,7 +185,60 @@ where
     })
 }
 
-pub async fn session_broker_serve<T>(broker: T) -> Result<(), dbus::MethodErr>
+/// Callbacks for getting and setting the log level at runtime.
+/// Used by the LogControl1 D-Bus interface to bridge into whatever
+/// logging framework the caller uses (e.g. tracing-subscriber reload).
+pub struct LogLevelCallbacks {
+    pub get: Arc<dyn Fn() -> String + Send + Sync>,
+    pub set: Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+}
+
+struct LogControlState {
+    syslog_identifier: String,
+    callbacks: LogLevelCallbacks,
+}
+
+fn register_log_control1(
+    cr: &mut crossroads::Crossroads,
+) -> crossroads::IfaceToken<LogControlState> {
+    cr.register("org.freedesktop.LogControl1", |b| {
+        b.property::<String, _>("LogLevel")
+            .emits_changed_false()
+            .get(|_ctx, data: &mut LogControlState| {
+                Ok((data.callbacks.get)())
+            })
+            .set(
+                |_ctx, data: &mut LogControlState, value: String| {
+                    (data.callbacks.set)(&value).map_err(|e| {
+                        dbus::MethodErr::failed(&e)
+                    })?;
+                    Ok(None)
+                },
+            );
+        b.property::<String, _>("LogTarget")
+            .emits_changed_false()
+            .get(|_ctx, _data: &mut LogControlState| {
+                Ok("journal".to_string())
+            })
+            .set(
+                |_ctx, _data: &mut LogControlState, _value: String| {
+                    Err(("org.freedesktop.DBus.Error.NotSupported",
+                        "Setting log target is not supported".to_string()).into())
+                },
+            );
+        b.property::<String, _>("SyslogIdentifier")
+            .emits_changed_false()
+            .get(|_ctx, data: &mut LogControlState| {
+                Ok(data.syslog_identifier.clone())
+            });
+    })
+}
+
+pub async fn session_broker_serve<T>(
+    broker: T,
+    syslog_identifier: &str,
+    log_callbacks: LogLevelCallbacks,
+) -> Result<(), dbus::MethodErr>
 where
     T: SessionBroker + Send + 'static,
 {
@@ -200,6 +254,16 @@ where
             |_, _, (): ()| Ok(()));
     });
     cr.insert("/com/microsoft/identity/broker1", &[token, peer], broker);
+
+    let log_control_token = register_log_control1(&mut cr);
+    cr.insert(
+        "/org/freedesktop/LogControl1",
+        &[log_control_token],
+        LogControlState {
+            syslog_identifier: syslog_identifier.to_string(),
+            callbacks: log_callbacks,
+        },
+    );
 
     // Serve clients forever.
     cr.serve(&c)?;
@@ -414,10 +478,15 @@ impl SessionBroker for HimmelblauSessionBroker {
 pub async fn himmelblau_session_broker_serve(
     sock_path: &str,
     timeout: u64,
+    log_callbacks: LogLevelCallbacks,
 ) -> Result<(), dbus::MethodErr> {
-    session_broker_serve(HimmelblauSessionBroker {
-        sock_path: sock_path.to_string(),
-        timeout,
-    })
+    session_broker_serve(
+        HimmelblauSessionBroker {
+            sock_path: sock_path.to_string(),
+            timeout,
+        },
+        "himmelblau_broker",
+        log_callbacks,
+    )
     .await
 }
