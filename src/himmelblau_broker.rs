@@ -140,6 +140,7 @@ where
     let mut reqs = Framed::new(sock, ClientCodec);
 
     while let Some(Ok(req)) = reqs.next().await {
+        debug!("Daemon received request from uid {}: {}", uid, req);
         let resp = match req {
             ClientRequest::acquireTokenInteractively(
                 protocol_version,
@@ -254,9 +255,10 @@ where
                     .await?
             }
         };
+        debug!("Daemon sending response ({} bytes) to uid {}", resp.len(), uid);
         reqs.send(resp).await?;
         reqs.flush().await?;
-        debug!("flushed response!");
+        debug!("Daemon flushed response to uid {}", uid);
     }
 
     debug!("Disconnecting client ...");

@@ -17,6 +17,7 @@
 */
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize)]
@@ -29,4 +30,38 @@ pub enum ClientRequest {
     generateSignedHttpRequest(String, String, String),
     cancelInteractiveFlow(String, String, String),
     getLinuxBrokerVersion(String, String, String),
+}
+
+impl ClientRequest {
+    pub fn method_name(&self) -> &'static str {
+        match self {
+            ClientRequest::acquireTokenInteractively(..) => "acquireTokenInteractively",
+            ClientRequest::acquireTokenSilently(..) => "acquireTokenSilently",
+            ClientRequest::getAccounts(..) => "getAccounts",
+            ClientRequest::removeAccount(..) => "removeAccount",
+            ClientRequest::acquirePrtSsoCookie(..) => "acquirePrtSsoCookie",
+            ClientRequest::generateSignedHttpRequest(..) => "generateSignedHttpRequest",
+            ClientRequest::cancelInteractiveFlow(..) => "cancelInteractiveFlow",
+            ClientRequest::getLinuxBrokerVersion(..) => "getLinuxBrokerVersion",
+        }
+    }
+
+    pub fn correlation_id(&self) -> &str {
+        match self {
+            ClientRequest::acquireTokenInteractively(_, cid, _)
+            | ClientRequest::acquireTokenSilently(_, cid, _)
+            | ClientRequest::getAccounts(_, cid, _)
+            | ClientRequest::removeAccount(_, cid, _)
+            | ClientRequest::acquirePrtSsoCookie(_, cid, _)
+            | ClientRequest::generateSignedHttpRequest(_, cid, _)
+            | ClientRequest::cancelInteractiveFlow(_, cid, _)
+            | ClientRequest::getLinuxBrokerVersion(_, cid, _) => cid,
+        }
+    }
+}
+
+impl fmt::Display for ClientRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}(correlation_id={})", self.method_name(), self.correlation_id())
+    }
 }
