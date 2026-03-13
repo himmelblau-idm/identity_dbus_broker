@@ -268,19 +268,40 @@ where
 pub async fn himmelblau_broker_serve<T>(
     broker: T,
     sock_path: &str,
-    mut broadcast_rx: Receiver<bool>,
+    broadcast_rx: Receiver<bool>,
 ) -> Result<JoinHandle<()>, Box<dyn Error>>
 where
     T: HimmelblauBroker + Send + 'static + Clone,
 {
-    // Set the umask while we open the path for most clients.
-    let before = unsafe { umask(0) };
-    let listener = UnixListener::bind(sock_path).map_err(|e| {
-        error!("Failed to bind UNIX socket at {}", sock_path);
-        Box::new(e)
-    })?;
-    // Undo umask changes.
-    let _ = unsafe { umask(before) };
+    himmelblau_broker_serve_with_listener(broker, Some(sock_path), broadcast_rx, None).await
+}
+
+pub async fn himmelblau_broker_serve_with_listener<T>(
+    broker: T,
+    sock_path: Option<&str>,
+    mut broadcast_rx: Receiver<bool>,
+    existing_listener: Option<UnixListener>,
+) -> Result<JoinHandle<()>, Box<dyn Error>>
+where
+    T: HimmelblauBroker + Send + 'static + Clone,
+{
+    let listener = if let Some(l) = existing_listener {
+        l
+    } else {
+        let sock_path = sock_path.ok_or_else(|| {
+            error!("sock_path is required when no existing listener is provided");
+            Box::<dyn Error>::from("sock_path is required when no existing listener is provided")
+        })?;
+        // Set the umask while we open the path for most clients.
+        let before = unsafe { umask(0) };
+        let listener = UnixListener::bind(sock_path).map_err(|e| {
+            error!("Failed to bind UNIX socket at {}", sock_path);
+            Box::new(e)
+        })?;
+        // Undo umask changes.
+        let _ = unsafe { umask(before) };
+        listener
+    };
 
     Ok(tokio::spawn(async move {
         loop {
