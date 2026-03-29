@@ -5,3 +5,5 @@ pub use session_broker::*;
 mod device_broker;
 pub use device_broker::*;
 mod broker_proto;
+#[cfg(feature = "interactive")]
+pub use broker_proto::{InteractiveAuthCredential, InteractiveAuthResponse};

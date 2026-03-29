@@ -19,6 +19,79 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Response from the daemon during an interactive authentication flow.
+#[cfg(feature = "interactive")]
+#[derive(Serialize, Deserialize)]
+pub enum InteractiveAuthResponse {
+    /// Prompt the user for their password.
+    PromptPassword,
+    /// Prompt the user for their Hello PIN.
+    PromptPin,
+    /// Prompt the user for an MFA verification code.
+    PromptMFACode { msg: String },
+    /// The user must approve an MFA request on another device; poll.
+    PromptMFAPoll { msg: String, polling_interval: u32 },
+    /// Prompt the user for FIDO2 authentication.
+    PromptFido {
+        fido_challenge: String,
+        fido_allow_list: Vec<String>,
+    },
+    /// Authentication succeeded; contains the broker token response JSON.
+    Success { token_response: String },
+    /// Authentication was denied.
+    Denied { msg: String },
+}
+
+#[cfg(feature = "interactive")]
+impl std::fmt::Debug for InteractiveAuthResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PromptPassword => f.write_str("PromptPassword"),
+            Self::PromptPin => f.write_str("PromptPin"),
+            Self::PromptMFACode { msg } => {
+                f.debug_struct("PromptMFACode").field("msg", msg).finish()
+            }
+            Self::PromptMFAPoll { msg, polling_interval } => {
+                f.debug_struct("PromptMFAPoll")
+                    .field("msg", msg)
+                    .field("polling_interval", polling_interval)
+                    .finish()
+            }
+            Self::PromptFido { .. } => f.write_str("PromptFido { .. }"),
+            Self::Success { .. } => f.write_str("Success { token_response: [REDACTED] }"),
+            Self::Denied { msg } => {
+                f.debug_struct("Denied").field("msg", msg).finish()
+            }
+        }
+    }
+}
+
+/// Credential submitted by the session broker during an interactive step.
+#[cfg(feature = "interactive")]
+#[derive(Serialize, Deserialize)]
+pub enum InteractiveAuthCredential {
+    Password { cred: String },
+    Pin { cred: String },
+    MFACode { cred: String },
+    MFAPoll { poll_attempt: u32 },
+    Fido { assertion: String },
+}
+
+#[cfg(feature = "interactive")]
+impl std::fmt::Debug for InteractiveAuthCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Password { .. } => f.write_str("Password { cred: [REDACTED] }"),
+            Self::Pin { .. } => f.write_str("Pin { cred: [REDACTED] }"),
+            Self::MFACode { .. } => f.write_str("MFACode { cred: [REDACTED] }"),
+            Self::MFAPoll { poll_attempt } => {
+                f.debug_struct("MFAPoll").field("poll_attempt", poll_attempt).finish()
+            }
+            Self::Fido { .. } => f.write_str("Fido { assertion: [REDACTED] }"),
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize)]
 pub enum ClientRequest {
@@ -30,6 +103,15 @@ pub enum ClientRequest {
     generateSignedHttpRequest(String, String, String),
     cancelInteractiveFlow(String, String, String),
     getLinuxBrokerVersion(String, String, String),
+    /// Start an interactive auth session (protocol_version, correlation_id, request_json).
+    #[cfg(feature = "interactive")]
+    interactiveAuthInit(String, String, String),
+    /// Submit a credential for an in-flight interactive session (correlation_id, credential_json).
+    #[cfg(feature = "interactive")]
+    interactiveAuthStep(String, String),
+    /// Cancel an in-flight interactive session (correlation_id).
+    #[cfg(feature = "interactive")]
+    interactiveAuthCancel(String),
 }
 
 impl ClientRequest {
@@ -43,6 +125,12 @@ impl ClientRequest {
             ClientRequest::generateSignedHttpRequest(..) => "generateSignedHttpRequest",
             ClientRequest::cancelInteractiveFlow(..) => "cancelInteractiveFlow",
             ClientRequest::getLinuxBrokerVersion(..) => "getLinuxBrokerVersion",
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthInit(..) => "interactiveAuthInit",
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthStep(..) => "interactiveAuthStep",
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthCancel(..) => "interactiveAuthCancel",
         }
     }
 
@@ -56,6 +144,12 @@ impl ClientRequest {
             | ClientRequest::generateSignedHttpRequest(_, cid, _)
             | ClientRequest::cancelInteractiveFlow(_, cid, _)
             | ClientRequest::getLinuxBrokerVersion(_, cid, _) => cid,
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthInit(_, cid, _) => cid,
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthStep(cid, _) => cid,
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthCancel(cid) => cid,
         }
     }
 }

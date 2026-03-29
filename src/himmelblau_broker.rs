@@ -86,6 +86,35 @@ pub trait HimmelblauBroker {
         request_json: String,
         uid: uid_t,
     ) -> Result<String, Box<dyn Error>>;
+
+    /// Begin an interactive authentication session for the caller.
+    /// Returns a JSON-serialized `InteractiveAuthResponse`.
+    #[cfg(feature = "interactive")]
+    async fn interactive_auth_init(
+        &mut self,
+        protocol_version: String,
+        correlation_id: String,
+        request_json: String,
+        uid: uid_t,
+    ) -> Result<String, Box<dyn Error>>;
+
+    /// Submit a credential for an in-flight interactive session.
+    /// Returns a JSON-serialized `InteractiveAuthResponse`.
+    #[cfg(feature = "interactive")]
+    async fn interactive_auth_step(
+        &mut self,
+        correlation_id: String,
+        credential_json: String,
+        uid: uid_t,
+    ) -> Result<String, Box<dyn Error>>;
+
+    /// Cancel an in-flight interactive session.
+    #[cfg(feature = "interactive")]
+    async fn interactive_auth_cancel(
+        &mut self,
+        correlation_id: String,
+        uid: uid_t,
+    ) -> Result<String, Box<dyn Error>>;
 }
 
 #[derive(Default)]
@@ -255,6 +284,45 @@ where
                         protocol_version,
                         correlation_id,
                         request_json,
+                        uid,
+                    )
+                    .await
+            }
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthInit(
+                protocol_version,
+                correlation_id,
+                request_json,
+            ) => {
+                broker
+                    .interactive_auth_init(
+                        protocol_version,
+                        correlation_id,
+                        request_json,
+                        uid,
+                    )
+                    .await
+            }
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthStep(
+                correlation_id,
+                credential_json,
+            ) => {
+                broker
+                    .interactive_auth_step(
+                        correlation_id,
+                        credential_json,
+                        uid,
+                    )
+                    .await
+            }
+            #[cfg(feature = "interactive")]
+            ClientRequest::interactiveAuthCancel(
+                correlation_id,
+            ) => {
+                broker
+                    .interactive_auth_cancel(
+                        correlation_id,
                         uid,
                     )
                     .await
