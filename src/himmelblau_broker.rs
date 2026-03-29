@@ -141,6 +141,11 @@ where
 
     while let Some(Ok(req)) = reqs.next().await {
         debug!("Daemon received request from uid {}: {}", uid, req);
+        let is_token_request = matches!(
+            req,
+            ClientRequest::acquireTokenInteractively(..)
+                | ClientRequest::acquireTokenSilently(..)
+        );
         let resp = match match req {
             ClientRequest::acquireTokenInteractively(
                 protocol_version,
@@ -258,7 +263,24 @@ where
             Ok(r) => r,
             Err(e) => {
                 error!("Broker method failed for uid {}: {}", uid, e);
-                serde_json::json!({"error": e.to_string()}).to_string()
+                let error_obj = serde_json::json!({
+                    "context": e.to_string(),
+                    "status": 0,
+                    "subStatus": 0
+                });
+                if is_token_request {
+                    serde_json::json!({
+                        "brokerTokenResponse": {
+                            "error": error_obj
+                        }
+                    })
+                    .to_string()
+                } else {
+                    serde_json::json!({
+                        "error": error_obj
+                    })
+                    .to_string()
+                }
             }
         };
         debug!("Daemon sending response ({} bytes) to uid {}", resp.len(), uid);
