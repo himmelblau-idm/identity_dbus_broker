@@ -141,7 +141,7 @@ where
 
     while let Some(Ok(req)) = reqs.next().await {
         debug!("Daemon received request from uid {}: {}", uid, req);
-        let resp = match req {
+        let resp = match match req {
             ClientRequest::acquireTokenInteractively(
                 protocol_version,
                 correlation_id,
@@ -154,7 +154,7 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
             }
             ClientRequest::acquireTokenSilently(
                 protocol_version,
@@ -168,7 +168,7 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
             }
             ClientRequest::getAccounts(
                 protocol_version,
@@ -182,7 +182,7 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
             }
             ClientRequest::removeAccount(
                 protocol_version,
@@ -196,7 +196,7 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
             }
             ClientRequest::acquirePrtSsoCookie(
                 protocol_version,
@@ -210,7 +210,7 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
             }
             ClientRequest::generateSignedHttpRequest(
                 protocol_version,
@@ -224,7 +224,7 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
             }
             ClientRequest::cancelInteractiveFlow(
                 protocol_version,
@@ -238,7 +238,7 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
             }
             ClientRequest::getLinuxBrokerVersion(
                 protocol_version,
@@ -252,7 +252,13 @@ where
                         request_json,
                         uid,
                     )
-                    .await?
+                    .await
+            }
+        } {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Broker method failed for uid {}: {}", uid, e);
+                serde_json::json!({"error": e.to_string()}).to_string()
             }
         };
         debug!("Daemon sending response ({} bytes) to uid {}", resp.len(), uid);
