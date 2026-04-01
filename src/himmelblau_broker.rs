@@ -294,13 +294,13 @@ where
         })?;
         // Set the umask while we open the path for most clients.
         let before = unsafe { umask(0) };
-        let listener = UnixListener::bind(sock_path).map_err(|e| {
+        let bind_result = UnixListener::bind(sock_path);
+        // Undo umask changes before handling the result.
+        let _ = unsafe { umask(before) };
+        bind_result.map_err(|e| {
             error!("Failed to bind UNIX socket at {}", sock_path);
             Box::new(e)
-        })?;
-        // Undo umask changes.
-        let _ = unsafe { umask(before) };
-        listener
+        })?
     };
 
     Ok(tokio::spawn(async move {
