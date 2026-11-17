@@ -1,3 +1,5 @@
+mod broker_error;
+pub use broker_error::{BrokerError, BrokerErrorKind};
 mod himmelblau_broker;
 pub use himmelblau_broker::*;
 mod session_broker;
