@@ -15,6 +15,7 @@
    You should have received a copy of the GNU Lesser General Public License
    along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
+use crate::broker_error::error_response;
 use crate::broker_proto::ClientRequest;
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
@@ -263,24 +264,7 @@ where
             Ok(r) => r,
             Err(e) => {
                 error!("Broker method failed for uid {}: {}", uid, e);
-                let error_obj = serde_json::json!({
-                    "context": e.to_string(),
-                    "status": 0,
-                    "subStatus": 0
-                });
-                if is_token_request {
-                    serde_json::json!({
-                        "brokerTokenResponse": {
-                            "error": error_obj
-                        }
-                    })
-                    .to_string()
-                } else {
-                    serde_json::json!({
-                        "error": error_obj
-                    })
-                    .to_string()
-                }
+                error_response(e.as_ref(), is_token_request)
             }
         };
         debug!("Daemon sending response ({} bytes) to uid {}", resp.len(), uid);
